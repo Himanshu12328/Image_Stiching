@@ -32,7 +32,13 @@ def draw_matches(img1, img2, matches, img1_corners, img2_corners):
     
     img_matches = cv2.drawMatches(img1, img1_kps, img2, img2_kps, matches_to_draw, None)
 
-    cv2.imshow('matches', img_matches)
+    original_height, original_width = img_matches.shape[:2]
+    new_width = original_width // 5
+    new_height = original_height // 5
+
+    resized_img = cv2.resize(img_matches, (new_width, new_height))
+    
+    cv2.imshow('matches', resized_img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
@@ -179,11 +185,11 @@ def __main__():
     img1 = cv2.imread('dataset/0.jpg') #first image
     img2 = cv2.imread('dataset/1.jpg') #second image
 
-    resized_img_1 = image_resizing(img1)
-    resized_img_2 = image_resizing(img2)
-
-    img_1_corner_mask = image_corners(resized_img_1)
-    img_2_corner_mask = image_corners(resized_img_2)
+    # resized_img_1 = image_resizing(img1)
+    # resized_img_2 = image_resizing(img2)
+    
+    img_1_corner_mask = image_corners(img1)
+    img_2_corner_mask = image_corners(img2)
 
     # print(f"Image 1 Corner Mask: {img_1_corner_mask}")
     # print(f"Image 2 Corner Mask: {img_2_corner_mask}")
@@ -196,7 +202,7 @@ def __main__():
 
     matches = match_feature_points(process_img1_patches, process_img2_patches)
 
-    draw_matches(resized_img_1, resized_img_2, matches, img_1_corner_mask, img_2_corner_mask)
+    draw_matches(img1, img2, matches, img_1_corner_mask, img_2_corner_mask)
 
     # show_image(resized_img)
     # show_image(image_1_corner_mask)
