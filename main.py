@@ -32,13 +32,13 @@ def draw_matches(img1, img2, matches, img1_corners, img2_corners):
     
     img_matches = cv2.drawMatches(img1, img1_kps, img2, img2_kps, matches_to_draw, None)
 
-    original_height, original_width = img_matches.shape[:2]
-    new_width = original_width // 5
-    new_height = original_height // 5
+    # original_height, original_width = img_matches.shape[:2]
+    # new_width = original_width // 5
+    # new_height = original_height // 5
 
-    resized_img = cv2.resize(img_matches, (new_width, new_height))
+    # resized_img = cv2.resize(img_matches, (new_width, new_height))
     
-    cv2.imshow('matches', resized_img)
+    cv2.imshow('matches', img_matches)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
@@ -86,45 +86,67 @@ def adaptive_non_max_suppression(corners, max_corners):
     '''
     Adaptive non-maximum suppression to get the best corners
     '''
+
+    local_maxima = cv2.dilate(corners, None) == corners
+    coordinates = np.argwhere(local_maxima)
+    coordinates[:, [0, 1]] = coordinates[:, [1, 0]]
+
+    corners_strong = len(coordinates)
+    ri = np.ones(corners_strong) * np.inf
+
+    for i in range(corners_strong):
+        xi, yi = coordinates[i]
+        for j in range(corners_strong):
+            xj, yj = coordinates[j]
+            if corners[yj, xj] > corners[yi, xi]:
+                ED = (xj - xi) ** 2 + (yj - yi) ** 2
+                if ED < ri[i]:
+                    ri[i] = ED
+
+    sorted_indices = np.argsort(ri)
+    selected_corners = [tuple(coordinates[idx] for idx in sorted_indices[:max_corners])]
+
+    return selected_corners
+
     # sort corners by strength
     # sorted_corners = sorted(corners, key=lambda x: x[2], reverse=True)
     
     #Initialize the list of selected corners with the strongest corner
-    selected_corners = [corners[0]]
+    # selected_corners = [corners[0]]
 
-    for i in range(len(corners)):
-        current_corner = corners[i]
-        add_corner = True
+    # for i in range(len(corners)):
+    #     current_corner = corners[i]
+    #     add_corner = True
 
-        for j in range(len(selected_corners)):
-            #calculate the minimum seperation distance
-            distance = np.sqrt((current_corner[0] - selected_corners[j][0]) ** 2 + (current_corner[1] - selected_corners[j][1]) ** 2)
-            min_distance = 1000000
+    #     for j in range(len(selected_corners)):
+    #         #calculate the minimum seperation distance
+    #         distance = np.sqrt((current_corner[0] - selected_corners[j][0]) ** 2 + (current_corner[1] - selected_corners[j][1]) ** 2)
+    #         min_distance = 1000000
 
 
-            for k in range(len(selected_corners)):
-                current_distance = np.sqrt((current_corner[0] - selected_corners[k][0]) ** 2 + (current_corner[1] - selected_corners[k][1]) ** 2)
-                min_distance = min(min_distance, current_distance)
-                #check if the corner is too close to a previously selected corner
-                # if sorted_corners[k][2] > current_corner[2]:
-                #     current_distance = np.sqrt((current_corner[0] - selected_corners[k][0]) ** 2 + (current_corner[1] - selected_corners[k][1]) ** 2)
-                #     min_distance = min(min_distance, current_distance)
+    #         for k in range(len(selected_corners)):
+    #             current_distance = np.sqrt((current_corner[0] - selected_corners[k][0]) ** 2 + (current_corner[1] - selected_corners[k][1]) ** 2)
+    #             min_distance = min(min_distance, current_distance)
+    #             #check if the corner is too close to a previously selected corner
+    #             # if sorted_corners[k][2] > current_corner[2]:
+    #             #     current_distance = np.sqrt((current_corner[0] - selected_corners[k][0]) ** 2 + (current_corner[1] - selected_corners[k][1]) ** 2)
+    #             #     min_distance = min(min_distance, current_distance)
 
             
-            threshold = min_distance * 0.9
+    #         threshold = min_distance * 0.9
 
-            if distance <= threshold:
-                add_corner = False
-                break
+    #         if distance <= threshold:
+    #             add_corner = False
+    #             break
                     
-        if add_corner:
-            selected_corners.append(current_corner)
+    #     if add_corner:
+    #         selected_corners.append(current_corner)
 
-        #stop when the list is long enough
-        if len(selected_corners) >= max_corners:
-            break
+    #     #stop when the list is long enough
+    #     if len(selected_corners) >= max_corners:
+    #         break
 
-    return selected_corners
+    # return selected_corners
 
 def image_corners(img):
     '''
@@ -138,28 +160,39 @@ def image_corners(img):
 
     image_corner_mask = np.zeros_like(image_corners)
     image_corner_mask[image_corners > threshold] = 255
-
-    image_corner_mask = np.uint8(image_corner_mask)
-
-    # find corners
-    corners = []
-    for y in range(image_corner_mask.shape[0]):
-        for x in range(image_corner_mask.shape[1]):
-            if image_corner_mask[y, x] == 255:
-                corners.append((x, y, 0))
+    
+    Cimg = image_corners
 
     max_corners = 100
-    select_corners = adaptive_non_max_suppression(corners, max_corners)
+    select_corners = adaptive_non_max_suppression(Cimg, max_corners)
+
+    return select_corners
+
+    # image_corner_mask = np.uint8(image_corner_mask)
+
+    # # find corners
+    # corners = []
+    # for y in range(image_corner_mask.shape[0]):
+    #     for x in range(image_corner_mask.shape[1]):
+    #         if image_corner_mask[y, x] == 255:
+    #             corners.append((x, y, 0))
+
+    # max_corners = 200
+    # select_corners = adaptive_non_max_suppression(corners, max_corners)
 
 
-    # draw corners
+    # # draw corners
     # for corner in select_corners:
     #     cv2.circle(img, (corner[0], corner[1]), 3, (0, 0, 255), -1)
 
     # img_with_corners = cv2.cvtColor(image_corner_mask, cv2.COLOR_GRAY2BGR)
     # img_with_corners[image_corner_mask != 0] = [0, 0, 255]
 
+    # image_resizing(img_with_corners)
+    # show_image(img_with_corners)
+
     return select_corners
+    # return corners
 
 
 def image_resizing(img):
@@ -182,27 +215,27 @@ def show_image(img):
 
 
 def __main__():
-    img1 = cv2.imread('dataset/0.jpg') #first image
-    img2 = cv2.imread('dataset/1.jpg') #second image
+    img1 = cv2.imread('Dataset/0.jpg') #first image
+    img2 = cv2.imread('Dataset/1.jpg') #second image
 
-    # resized_img_1 = image_resizing(img1)
-    # resized_img_2 = image_resizing(img2)
+    resized_img1 = image_resizing(img1)
+    resized_img2 = image_resizing(img2)
     
-    img_1_corner_mask = image_corners(img1)
-    img_2_corner_mask = image_corners(img2)
+    img_1_corner_mask = image_corners(resized_img1)
+    img_2_corner_mask = image_corners(resized_img2)
 
     # print(f"Image 1 Corner Mask: {img_1_corner_mask}")
     # print(f"Image 2 Corner Mask: {img_2_corner_mask}")
 
-    image_1_patches = extract_patch(img1, img_1_corner_mask)
-    image_2_patches = extract_patch(img2, img_2_corner_mask)
+    image_1_patches = extract_patch(resized_img1, img_1_corner_mask)
+    image_2_patches = extract_patch(resized_img2, img_2_corner_mask)
 
     process_img1_patches = process_patch(image_1_patches)
     process_img2_patches = process_patch(image_2_patches)
 
     matches = match_feature_points(process_img1_patches, process_img2_patches)
 
-    draw_matches(img1, img2, matches, img_1_corner_mask, img_2_corner_mask)
+    draw_matches(resized_img1, resized_img2, matches, img_1_corner_mask, img_2_corner_mask)
 
     # show_image(resized_img)
     # show_image(image_1_corner_mask)
