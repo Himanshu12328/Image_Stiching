@@ -124,6 +124,6 @@ def detect_and_match_features(image_path1, image_path2):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-img = 'Dataset/1.jpg'
-img2 = 'Dataset/2.jpg'
+img = 'data/1.jpg'
+img2 = 'data/2.jpg'
 detect_and_match_features(img, img2)

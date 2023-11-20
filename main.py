@@ -195,15 +195,15 @@ def image_corners(img):
     # return corners
 
 
-def image_resizing(img):
-    '''
-    Resize 1/5 of the original image
-    '''
-    original_height, original_width = img.shape[:2]
-    new_width = original_width // 5
-    new_height = original_height // 5
-    resized_img = cv2.resize(img, (new_width, new_height))
-    return resized_img
+# def image_resizing(img):
+#     '''
+#     Resize 1/5 of the original image
+#     '''
+#     original_height, original_width = img.shape[:2]
+#     new_width = original_width // 5
+#     new_height = original_height // 5
+#     resized_img = cv2.resize(img, (new_width, new_height))
+#     return resized_img
 
 def show_image(img):
     '''
@@ -215,27 +215,27 @@ def show_image(img):
 
 
 def __main__():
-    img1 = cv2.imread('Dataset/0.jpg') #first image
-    img2 = cv2.imread('Dataset/1.jpg') #second image
+    img1 = cv2.imread('data/1.jpg') #first image
+    img2 = cv2.imread('data/2.jpg') #second image
 
-    resized_img1 = image_resizing(img1)
-    resized_img2 = image_resizing(img2)
+    # resized_img1 = image_resizing(img1)
+    # resized_img2 = image_resizing(img2)
     
-    img_1_corner_mask = image_corners(resized_img1)
-    img_2_corner_mask = image_corners(resized_img2)
+    img_1_corner_mask = image_corners(img1)
+    img_2_corner_mask = image_corners(img2)
 
     # print(f"Image 1 Corner Mask: {img_1_corner_mask}")
     # print(f"Image 2 Corner Mask: {img_2_corner_mask}")
 
-    image_1_patches = extract_patch(resized_img1, img_1_corner_mask)
-    image_2_patches = extract_patch(resized_img2, img_2_corner_mask)
+    image_1_patches = extract_patch(img1, img_1_corner_mask)
+    image_2_patches = extract_patch(img2, img_2_corner_mask)
 
     process_img1_patches = process_patch(image_1_patches)
     process_img2_patches = process_patch(image_2_patches)
 
     matches = match_feature_points(process_img1_patches, process_img2_patches)
 
-    draw_matches(resized_img1, resized_img2, matches, img_1_corner_mask, img_2_corner_mask)
+    draw_matches(img1, img2, matches, img_1_corner_mask, img_2_corner_mask)
 
     # show_image(resized_img)
     # show_image(image_1_corner_mask)
