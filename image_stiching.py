@@ -1,6 +1,81 @@
 import cv2
 import numpy as np
 
+def blend_img(img1, img2, homography):
+    height , width = img1.shape[:2]
+    wraped_img2 = cv2.warpPerspective(img2, homography, (width, height))
+
+    mask1 = np.zeros_like(img1, dtype=np.uint8)
+    mask2 = np.zeros_like(wraped_img2, dtype=np.uint8)
+
+    cv2.fillConvexPoly(mask1, np.int32(dst_pts), (255, 255, 255))
+    cv2.fillConvexPoly(mask2, np.int32(src_pts), (255, 255, 255))
+
+    blended_img = cv2.seamlessClone(wraped_img2, img1, mask2, (width // 2, height // 2), cv2.NORMAL_CLONE)
+
+    return blended_img
+
+def stitch_img(images):
+    final_panorama = images[0]  # Start with the first image as the base
+
+    for i in range(1, len(images)):
+        img1 = final_panorama
+        img2 = images[i]
+
+        img1_corners = image_corners(img1)
+        img2_corners = image_corners(img2)
+
+        matches = match_feature_points(img1, img2)
+
+        threshold = 100
+        Nmax = 1000
+        percentage_inliers = 0.9
+
+        if len(matches) < 4:
+            continue  # If there are less than 4 matches, skip this image pair
+        
+        inliers = []
+        best_homography = []
+        max_inliers = 0
+
+        for _ in range(Nmax):
+            random_matches = np.random.choice(len(matches), 4, replace=False)
+            src_pts = np.array([img1_corners[matches[random_matches[i]][0]] for i in range(4)])
+            dst_pts = np.array([img2_corners[matches[random_matches[i]][1]] for i in range(4)])
+
+            H = compute_homography(src_pts, dst_pts)
+
+            current_inliers = []
+
+            for idx, match in enumerate(matches):
+                src_point = img1_corners[match[0]]
+                dst_point = img2_corners[match[1]]
+
+                ssd = calculate_ssd(src_point, dst_point, H)
+
+                if ssd < threshold:
+                    current_inliers.append(match)
+
+            if len(current_inliers) > max_inliers:
+                max_inliers = len(current_inliers)
+                inliers = current_inliers
+                best_homography = H
+
+            if len(inliers) > len(matches) * percentage_inliers:
+                break
+
+        if len(inliers) >= 4:  # Check if we found enough inliers to proceed
+            inliers_src_pts = np.array([img1_corners[m[0]] for m in inliers])
+            inliers_dst_pts = np.array([img2_corners[m[1]] for m in inliers])
+
+            final_homography = compute_homography(inliers_src_pts, inliers_dst_pts)
+
+            # Blend images using the calculated homography
+            final_panorama = blend_img(img1, img2, final_homography)
+
+    return final_panorama
+
+
 def compute_homography(src_pts, dst_pts):
     return cv2.findHomography(src_pts, dst_pts, cv2.RANSAC)[0]
 
@@ -119,60 +194,68 @@ def show_image(img):
 
 
 def __main__():
-    img1 = cv2.imread('data/1.jpg') #first image
-    img2 = cv2.imread('data/2.jpg') #second image
+    # img1 = cv2.imread('data/1.jpg') #first image
+    # img2 = cv2.imread('data/2.jpg') #second image
     
-    img_1_corner_mask = image_corners(img1)
-    img_2_corner_mask = image_corners(img2)
+    images = [cv2.imread(f'data/{i}.jpg') for i in range(1, 4)]  # Load all images
 
-    image_1_patches = extract_patch(img1, img_1_corner_mask)
-    image_2_patches = extract_patch(img2, img_2_corner_mask)
+    final_panorama = stitch_img(images)
 
-    process_img1_patches = process_patch(image_1_patches)
-    process_img2_patches = process_patch(image_2_patches)
+    cv2.imshow('Panorama', final_panorama)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
-    matches = match_feature_points(process_img1_patches, process_img2_patches)
+    # img_1_corner_mask = image_corners(img1)
+    # img_2_corner_mask = image_corners(img2)
 
-    threshold = 100
-    Nmax = 1000
-    percentage_inliers = 0.9
+    # image_1_patches = extract_patch(img1, img_1_corner_mask)
+    # image_2_patches = extract_patch(img2, img_2_corner_mask)
 
-    inliers = []
-    best_homography = []
-    max_inliers = 0
+    # process_img1_patches = process_patch(image_1_patches)
+    # process_img2_patches = process_patch(image_2_patches)
 
-    for _ in range(Nmax):
-        random_matches = np.random.choice(len(matches), 4, replace=False)
-        src_pts = np.array([img_1_corner_mask[matches[random_matches[i]][0]] for i in range(4)])
-        dst_pts = np.array([img_2_corner_mask[matches[random_matches[i]][1]] for i in range(4)])
+    # matches = match_feature_points(process_img1_patches, process_img2_patches)
 
-        H = compute_homography(src_pts, dst_pts)
+    # threshold = 100
+    # Nmax = 1000
+    # percentage_inliers = 0.9
 
-        current_inliers = []
+    # inliers = []
+    # best_homography = []
+    # max_inliers = 0
 
-        for idx, match in enumerate(matches):
-            src_point = img_1_corner_mask[match[0]]
-            dst_point = img_2_corner_mask[match[1]]
+    # for _ in range(Nmax):
+    #     random_matches = np.random.choice(len(matches), 4, replace=False)
+    #     src_pts = np.array([img_1_corner_mask[matches[random_matches[i]][0]] for i in range(4)])
+    #     dst_pts = np.array([img_2_corner_mask[matches[random_matches[i]][1]] for i in range(4)])
 
-            ssd = calculate_ssd(src_point, dst_point, H)
+    #     H = compute_homography(src_pts, dst_pts)
 
-            if ssd < threshold:
-                current_inliers.append(match)
+    #     current_inliers = []
 
-        if len(current_inliers) > max_inliers:
-            max_inliers = len(current_inliers)
-            inliers = current_inliers
-            best_homography = H
+    #     for idx, match in enumerate(matches):
+    #         src_point = img_1_corner_mask[match[0]]
+    #         dst_point = img_2_corner_mask[match[1]]
 
-        if len(inliers) > len(matches) * percentage_inliers:
-            break
+    #         ssd = calculate_ssd(src_point, dst_point, H)
 
-    inliers_src_pts = np.array([img_1_corner_mask[m[0]] for m in inliers])
-    inliers_dst_pts = np.array([img_2_corner_mask[m[1]] for m in inliers])
+    #         if ssd < threshold:
+    #             current_inliers.append(match)
 
-    final_homography = compute_homography(inliers_src_pts, inliers_dst_pts)
+    #     if len(current_inliers) > max_inliers:
+    #         max_inliers = len(current_inliers)
+    #         inliers = current_inliers
+    #         best_homography = H
+
+    #     if len(inliers) > len(matches) * percentage_inliers:
+    #         break
+
+    # inliers_src_pts = np.array([img_1_corner_mask[m[0]] for m in inliers])
+    # inliers_dst_pts = np.array([img_2_corner_mask[m[1]] for m in inliers])
+
+    # final_homography = compute_homography(inliers_src_pts, inliers_dst_pts)
     
-    draw_matches(img1, img2, inliers, img_1_corner_mask, img_2_corner_mask)
+    # draw_matches(img1, img2, inliers, img_1_corner_mask, img_2_corner_mask)
 
 if __name__ == '__main__':
     __main__()
