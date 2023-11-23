@@ -1,6 +1,14 @@
 import cv2
 import numpy as np
 
+def compute_homography(src_pts, dst_pts):
+    return cv2.findHomography(src_pts, dst_pts, cv2.RANSAC)[0]
+
+def calculate_ssd(point1, point2, homography):
+    transformed_point = np.dot(homography, np.array([point1[0], point1[1], 1]))
+    transformed_point = transformed_point / transformed_point[2]
+    return np.sum((point2 - transformed_point[:2])**2)
+
 
 def match_feature_points(processed_img1_patches, processed_img2_patches):
     matches = []
@@ -101,147 +109,6 @@ def image_corners(img):
 
     return image_corners.reshape(-1, 2)
 
-
-# def image_resizing(img, scale):
-    # Use bilinear interpolation for better
-
-# import cv2
-# import numpy as np
-
-# def match_feature_points(processed_img1_patches, processed_img2_patches):
-#     matches = []
-
-#     for i, patch1 in enumerate(processed_img1_patches):
-#         best_match_distance = float('inf')
-#         second_best_match_distance = float('inf')
-#         best_match_idx = -1
-
-#         for j, patch2 in enumerate(processed_img2_patches):
-#             ssd = np.sum((patch1 - patch2) ** 2)
-
-#             if ssd < best_match_distance:
-#                 second_best_match_distance = best_match_distance
-#                 best_match_distance = ssd
-#                 best_match_idx = j
-#             elif ssd < second_best_match_distance:
-#                 second_best_match_distance = ssd
-
-#         ratio = 0.7
-#         if best_match_distance < ratio * second_best_match_distance:
-#             matches.append([i, best_match_idx])
-#     return matches
-
-# def draw_matches(img1, img2, matches, img1_corners, img2_corners):
-#     img1_kps = [cv2.KeyPoint(int(x[0]), int(x[1]), 1) for x in img1_corners]
-#     img2_kps = [cv2.KeyPoint(int(x[0]), int(x[1]), 1) for x in img2_corners]
-
-#     matches_to_draw = [cv2.DMatch(m[0], m[1], 1) for m in matches]
-    
-#     img_matches = cv2.drawMatches(img1, img1_kps, img2, img2_kps, matches_to_draw, None)
-    
-#     cv2.imshow('matches', img_matches)
-#     cv2.waitKey(0)
-#     cv2.destroyAllWindows()
-
-
-# def extract_patch(img, corner_mask):
-#     '''
-#     Extract patches from the image
-#     '''
-#     # patch_size = 41
-#     patches = []
-
-#     for corner in corner_mask:
-#         x, y = corner  # Update unpacking to handle two values (x, y)
-#         if x - 20 < 0 or y - 20 < 0 or x + 20 >= img.shape[1] or y + 20 >= img.shape[0]:
-#             continue
-
-#         patch = img[y - 20:y + 21, x - 20:x + 21]
-#         patches.append(patch)
-
-#     return patches
-
-# def process_patch(patches):
-#     '''
-#     Process the patch
-#     '''
-#     processed_patches = []
-#     for patch in patches:
-#         blurred_patch = cv2.GaussianBlur(patch, (5, 5), 0)
-
-#         subsampled_patch = cv2.resize(blurred_patch, (8, 8))
-
-#         vector = subsampled_patch.flatten().reshape(-1, 1)
-
-#         standardized_vector = (vector - np.mean(vector)) / np.std(vector)
-
-#         processed_patches.append(standardized_vector)
-
-#     return processed_patches
-
-# def adaptive_non_max_suppression(corners, max_corners):
-#     '''
-#     Adaptive non-maximum suppression to get the best corners
-#     '''
-
-#     local_maxima = cv2.dilate(corners, None) == corners
-#     coordinates = np.argwhere(local_maxima)
-#     coordinates[:, [0, 1]] = coordinates[:, [1, 0]]
-
-#     corners_strong = len(coordinates)
-#     r = np.ones(corners_strong) * np.inf
-
-#     for i in range(corners_strong):
-#         x, y = coordinates[i]
-#         for j in range(corners_strong):
-#             a, b = coordinates[j]
-#             if corners[b, a] > corners[y, x]:
-#                 ED = (a - x) ** 2 + (b - y) ** 2
-#                 if ED < r[i]:
-#                     r[i] = ED
-
-#     finate_indices = np.where(np.isfinite(r))[0]
-#     sorted_indices = finate_indices[np.argsort(r[finate_indices])]
-#     selected_corners = coordinates[sorted_indices[:max_corners]]
-
-#     return selected_corners
-
-
-# def image_corners(img):
-#     '''
-#     Detecting corners of the image
-#     '''
-#     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-#     img_gray = np.float32(img_gray)
-#     image_corners = cv2.cornerHarris(img_gray, blockSize=2, ksize=3, k=0.04)
-    
-#     # Tunning the threshold depending on the image
-#     threshold = 0.01 * image_corners.max()
-
-#     image_corner_mask = np.zeros_like(image_corners)
-#     image_corner_mask[image_corners > threshold] = 255
-    
-#     # Get coordinates of the corners
-#     corner_coords = np.argwhere(image_corner_mask == 255)
-#     corner_coords[:, [0, 1]] = corner_coords[:, [1, 0]]  # Swap columns for (x, y) format
-    
-#     max_corners = 100
-#     selected_corners = corner_coords[:max_corners]
-
-#     return selected_corners
-
-
-
-# def image_resizing(img):
-#     '''
-#     Resize 1/5 of the original image
-#     '''
-#     original_height, original_width = img.shape[:2]
-#     new_width = original_width // 5
-#     new_height = original_height // 5
-#     resized_img = cv2.resize(img, (new_width, new_height))
-#     return resized_img
-
 def show_image(img):
     '''
     Show the image
@@ -254,9 +121,6 @@ def show_image(img):
 def __main__():
     img1 = cv2.imread('data/1.jpg') #first image
     img2 = cv2.imread('data/2.jpg') #second image
-
-    # resized_img1 = image_resizing(img1)
-    # resized_img2 = image_resizing(img2)
     
     img_1_corner_mask = image_corners(img1)
     img_2_corner_mask = image_corners(img2)
@@ -269,7 +133,46 @@ def __main__():
 
     matches = match_feature_points(process_img1_patches, process_img2_patches)
 
-    draw_matches(img1, img2, matches, img_1_corner_mask, img_2_corner_mask)
+    threshold = 100
+    Nmax = 1000
+    percentage_inliers = 0.9
+
+    inliers = []
+    best_homography = []
+    max_inliers = 0
+
+    for _ in range(Nmax):
+        random_matches = np.random.choice(len(matches), 4, replace=False)
+        src_pts = np.array([img_1_corner_mask[matches[random_matches[i]][0]] for i in range(4)])
+        dst_pts = np.array([img_2_corner_mask[matches[random_matches[i]][1]] for i in range(4)])
+
+        H = compute_homography(src_pts, dst_pts)
+
+        current_inliers = []
+
+        for idx, match in enumerate(matches):
+            src_point = img_1_corner_mask[match[0]]
+            dst_point = img_2_corner_mask[match[1]]
+
+            ssd = calculate_ssd(src_point, dst_point, H)
+
+            if ssd < threshold:
+                current_inliers.append(match)
+
+        if len(current_inliers) > max_inliers:
+            max_inliers = len(current_inliers)
+            inliers = current_inliers
+            best_homography = H
+
+        if len(inliers) > len(matches) * percentage_inliers:
+            break
+
+    inliers_src_pts = np.array([img_1_corner_mask[m[0]] for m in inliers])
+    inliers_dst_pts = np.array([img_2_corner_mask[m[1]] for m in inliers])
+
+    final_homography = compute_homography(inliers_src_pts, inliers_dst_pts)
+    
+    draw_matches(img1, img2, inliers, img_1_corner_mask, img_2_corner_mask)
 
 if __name__ == '__main__':
     __main__()
