@@ -238,44 +238,19 @@ def warpTwoImages(images, H):
 	return result
 
 def stitching(data_path):
-	# folder_img = os.path.join("..", "Data", "Train", "Set2")
-	folder_img = os.path.join("data")
-	image_list = ['1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg']
-	# print(images_path)
+	# # folder_img = os.path.join("..", "Data", "Train", "Set2")
+	# folder_img = os.path.join("data")
+	# image_list = ['1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg']
+	# # print(images_path)
 	images1 = []
 	gray_images1 = []
-	img1 = cv2.imread('data/1.jpg')
-	img2 = cv2.imread('data/2.jpg')
-	img3 = cv2.imread('data/3.jpg')
-	img4 = cv2.imread('data/4.jpg')
-	img5 = cv2.imread('data/5.jpg')
-	# img6 = cv2.imread('data/6.jpg')
-	images1.append(img1)
-	images1.append(img2)
-	images1.append(img3)
-	images1.append(img4)
-	images1.append(img5)
-	# images1.append(img6)
-	img_g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-	img_g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-	img_g3 = cv2.cvtColor(img3, cv2.COLOR_BGR2GRAY)
-	img_g4 = cv2.cvtColor(img4, cv2.COLOR_BGR2GRAY)
-	img_g5 = cv2.cvtColor(img5, cv2.COLOR_BGR2GRAY)
-	# img_g6 = cv2.cvtColor(img6, cv2.COLOR_BGR2GRAY)
-	gray_images1.append(img_g1)
-	gray_images1.append(img_g2)
-	gray_images1.append(img_g3)
-	gray_images1.append(img_g4)
-	gray_images1.append(img_g5)
-	# gray_images1.append(img_g6)
 
-	# # for i in range(1,len(image_list)+1):   #pass range as no. of images to be stitched
-	# for img_name in image_list:
-	# 	img_path = os.path.join(folder_img, img_name)
-	# 	img = cv2.imread(img_path)
-	# 	images1.append(img)
-		
-	# 	gray_images1.append(img_g)
+	for i in range(1,6):
+		img = cv2.imread(f'data/original/{i}.jpg')
+		images1.append(img)
+		# print("i",len(images1))
+		img_g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+		gray_images1.append(img_g)
 
 	img_count = len(images1)
 	corners = 1000
