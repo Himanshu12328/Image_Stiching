@@ -1,31 +1,10 @@
 import cv2
 import numpy as np
+import scipy
+from numba import jit
+import sys
+import matplotlib.pyplot as plt
 
-def describe_feature(img, keypoints):
-    descriptors = []
-
-    for kp in keypoints:
-        x, y = kp.pt[0], kp.pt[1]
-
-        # Check if patch is within image boundaries
-        if (y - 20 < 0) or (y + 21 > img.shape[0]) or (x - 20 < 0) or (x + 21 > img.shape[1]):
-            continue
-
-        patch = img[max(0, int(y - 20)):min(int(y + 21), img.shape[0]), max(0, int(x - 20)):min(int(x + 21), img.shape[1])]
-
-        if patch.shape != (41, 41):  # Ensure the patch is 41x41
-            continue
-
-        blurred_patch = cv2.GaussianBlur(patch, (0, 0), sigmaX=2)
-        subsampled_patch = cv2.resize(blurred_patch, (8, 8))
-        descriptor = subsampled_patch.flatten()
-
-        # Standardize the vector
-        descriptor = (descriptor - np.mean(descriptor)) / np.std(descriptor)
-
-        descriptors.append(descriptor)
-
-    return np.array(descriptors)
             
     
 def match_features(descriptors1, descriptors2):
@@ -49,55 +28,101 @@ def match_features(descriptors1, descriptors2):
                 matches.append((i, best_match))
 
     return matches
-    
 
-def ANMS(corners, max_pts):
-    # Finding the x, y coordinates from corners
-    coords = np.array([[corner[0][0], corner[0][1]] for corner in corners])
+def feature_descriptors(img, img_g, Nbest_corners, patch_size):
+    descriptors = []
+    x = Nbest_corners[:,1]
+    y = Nbest_corners[:,2]
 
-    # Calculate Euclidean distances between points
-    distances = np.zeros((len(coords), len(coords)))
-    for i in range(len(coords)):
-        for j in range(len(coords)):
-            distances[i][j] = np.linalg.norm(coords[i] - coords[j])
+    for i in range(len(Nbest_corners)):
+        y_i = x[i]          #reverse the co-ordinates again
+        x_i = y[i]
+        gray = copy.deepcopy(img_g)
+        gray = np.pad(img_g, ((patch_size, patch_size), (patch_size, patch_size)), mode='constant', constant_values=0) #pad the image by 40 on all sides
+        x_start = int(x_i + patch_size/2)
+        y_start = int(y_i + patch_size/2)
+        descriptor = gray[x_start: x_start+patch_size, y_start:y_start+patch_size]  #40X40 descriptor pf one point
+        descriptor = cv2.GaussianBlur(descriptor, (7, 7), cv2.BORDER_DEFAULT)
+        descriptor = descriptor[::5, ::5]
+        descriptor_1 = descriptor.reshape((64, 1))
+        descriptor_std = (descriptor_1 - descriptor_1.mean())/descriptor_1.std()
+        descriptors.append(descriptor_std)  
 
-    # Find the furthest and closest neighbors for each point
-    furthest = np.max(distances, axis=1)
-    closest = np.min(distances + np.eye(len(coords)) * np.max(distances), axis=1)
+    return descriptors
 
-    # Compute the suppression criteria
-    suppression = furthest / closest
 
-    # Select the points with highest suppression criteria
-    indices = np.argsort(suppression)[::-1][:max_pts]
-    selected_corners = [corners[i] for i in indices]
+@jit
+def ANMS(img, img_h, n_best, coords):
+    num = len(coords)
+    inf = sys.maxsize
+    r = inf * np.ones((num,3))
+    ED = 0
+    for i in range(num):
+        for j in range(num):
+            x_i = coords[i][1]              #We take x_cordinate of one corner point
+            y_i = coords[i][0]              #We take x_cordinate of one corner point
+            neighbors_x = coords[j][1]      #x_cordinate of other points
+            neighbors_y = coords[j][0]
 
-    return selected_corners
+            if img_h[y_i, x_i] > img_h[neighbors_y, neighbors_x]:
+                ED = (neighbors_x - x_i)**2 + (neighbors_y - y_i)**2
 
-def corners(img, choice, Nbest, max_pts):
+            if ED < r[i, 0]:
+                r[i, 0] = ED
+                r[i, 1] = x_i
+                r[i, 2] = y_i
+    arr = r[:,0]
+    feature_sorting = np.argsort(-arr)      #We get the index of biggest that is the resaon of -ve sign (Descending order index)
+    feature_coord = r[feature_sorting]
+    Nbest_corners = feature_coord[:n_best,:] #We also can find min of (n_best, num_of_feature_cordinates we got)
+    for i in range(len(Nbest_corners)):
+        cv2.circle(img, (int(Nbest_corners[i][1]), int(Nbest_corners[i][2])), 3, 255, -1)
+    plt.imshow(img)
+    plt.savefig("anms.png")
+    return Nbest_corners
+
+
+def corners(img, img_g, choice):
     '''
     Corner Detector to find corners of an image, Choice 1 = Shi-Tomasi Choice 2 = Harris
     '''
 
-    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
     if choice == 1:
-        corners_img = cv2.goodFeaturesToTrack(gray_img, 1000, 0.05, 10)
+        dst = cv2.goodFeaturesToTrack(img_g, 1000, 0.05, 10)
+        img_h = cv2.dilate(dst, None, iterations=2)
         
-        selected_corners = ANMS(corners_img, max_pts)
+        
 
     elif choice == 2:
-        gray_img = np.float32(gray_img)
-        corners_img = cv2.cornerHarris(gray_img, 3, 3, 0.04)
-        img[corners_img > 0.001 * corners_img.max()] = [0, 255, 0]
+        img_g = np.float32(img_g)
+        dst = cv2.cornerHarris(img_g, 2, 3, 0.04)
+        img_h = cv2.dilate(dst, None, iterations=2)
+        # img[img_h > 0.001 * img_h.max()] = [255,0,0]
+	    # plt.imshow(dst)
+	    # plt.show()
+    
 
-        selected_corners = ANMS(corners_img, max_pts)
 
     else:
         print("Wrong choice entered for corner detection method")
         return None
 
-    return selected_corners
+    lm = scipy.ndimage.maximum_filter(img_h, 10)
+    msk = (img_h == lm)
+    ls = scipy.ndimage.minimum_filter(img_h, 10)
+    diff = ((lm - ls) > 20000)
+    msk[diff == 0] = 0
+    img[img_h > 0.01*img_h.max()] = [255, 0, 0]
+    # plt.imshow(img)
+	# plt.savefig("harris.png")
+	# plt.show()
+    coords = []
+    for i in range(msk.shape[0]):
+        for j in range(msk.shape[1]):
+            if msk[i][j] == True:
+                coords.append((i,j))
+
+    return coords, dst
     
 
 def generate_keypoints(corners):
