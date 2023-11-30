@@ -1,18 +1,27 @@
 import cv2
 import copy
-from utils import ANMS, corners, feature_descriptors
-
+from utils import ANMS, img_corners, feature_descriptors, feature_matching, ransac, wraptwoimages, draw_matches
+import matplotlib.pyplot as plt
 
 def __main__():
 
     images = []
     gray_images = []
 
-    for i in range (1, 6):
-        img = cv2.imread('data/{i}.jpg')
-        images.append(img)
-        img_g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray_images.append(img_g)
+    img = cv2.imread('data/1.jpg')
+    img1 = cv2.imread('data/1.jpg')
+    images.append(img)
+    images.append(img1)
+    img_g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray_images.append(img_g)
+    img_g1 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray_images.append(img_g1)
+    
+    # for i in range (1, 3):
+    #     img = cv2.imread('data/{i}.jpg')
+    #     images.append(img)
+    #     img_g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #     gray_images.append(img_g)
 
     img_count = len(images)
     corners = 1000
@@ -31,30 +40,30 @@ def __main__():
         for i in range(2):
             img = imgs[i]
             img_g = gray_imgs[i]
-            coords, img_h = corners(copy.deepcopy(img), img_g, 2)
+            coords, img_h = img_corners(copy.deepcopy(img), img_g, 2)
             Nbest_corners = ANMS(copy.deepcopy(img), img_h, corners, coords)
             best_corners.append(Nbest_corners)
             feature_vectors = feature_descriptors(copy.deepcopy(img), img_g, Nbest_corners, 40)
             img_desc.append(feature_vectors)
 
-    
+        matched_pairs = feature_matching(imgs, gray_imgs, img_desc, best_corners, match_ratio)
+        print("Matched pairs", len(matched_pairs))
+        # draw_matches(images,matched_pairs)
+        if len(matched_pairs) > 20:
+            c1 = c2
+            final_h_mat, final_matched = ransac(matched_pairs, threshold)
+            wraped = wraptwoimages(imgs, final_h_mat)
+            plt.imshow(wraped)
+            plt.show()
+        else:
+            c3 += 1
+            continue
 
+        images[c1] = wraped
+        gray_images[c1] = cv2.cvtColor(wraped, cv2.COLOR_BGR2GRAY)
 
-    
-    # img1_corners = corners(img1, 1, 100, 150)
-    # img2_corners = corners(img2, 1, 100, 150)
+        # draw_matches(imgs, matched_pairs)
 
-    # img1_keypoints = generate_keypoints(img1_corners)
-    # img2_keypoints = generate_keypoints(img2_corners)
-
-    # descriptors1 = describe_feature(img1, img1_keypoints)
-    # descriptors2 = describe_feature(img2, img2_keypoints)
-
-    # matches = match_features(descriptors1, descriptors2)
-
-    # visualize_matches(img1, img1_keypoints, img2, img2_keypoints, matches)
-
-    # show(img1_corner)
 
 if __name__ == '__main__':
     __main__()

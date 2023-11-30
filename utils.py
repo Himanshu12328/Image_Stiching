@@ -4,30 +4,116 @@ import scipy
 from numba import jit
 import sys
 import matplotlib.pyplot as plt
+import random
+import copy
 
-            
+def keypoint(points):
+    kp1 = []
+    for i in range(len(points)):
+        kp1.append(cv2.KeyPoint(int(points[i][0]), int(points[i][1]), 3))
+        return kp1
     
-def match_features(descriptors1, descriptors2):
-    matches = []
-    for i in range(len(descriptors1)):
-        best_match = -1
-        second_best_match = -1
-        min_sq_diff = float('inf')
+def matches(points):
+    m = []
+    for i in range(len(points)):
+        m.append(cv2.DMatch(int(points[i][0]), int(points[i][1]), 2))
+        return m
+    
+def draw_matches(images, matched_pairs):
+    img1 = copy.deepcopy(images[0])
+    img2 = copy.deepcopy(images[1])
+    key_points_1 = [x[0] for x in matched_pairs]
+    keypoints1 = keypoint(key_points_1)
+    key_points_2 = [x[1] for x in matched_pairs]
+    keypoints2 = keypoint(key_points_2)
+    matched_pairs_idx = [(i,i) for i,j in enumerate(matched_pairs)]
+    matches1to2 = matches(matched_pairs_idx)
+    out = cv2.drawMatches(img1, keypoints1, img2, keypoints2, matches1to2, None, flags =2)
+    plt.imshow(out)
+    plt.show()
+	
+def wraptwoimages(images, H):
+    img1 = copy.deepcopy(images[1])
+    img2 = copy.deepcopy(images[0])
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+    pts1 = np.float32([[0,0], [0,h1], [w1,h1], [w1,0]]).reshape(-1,1,2)
+    pts2 = np.float32([[0,0], [0,h2], [w2,h2], [w2,0]]).reshape(-1,1,2)
+    pts_2 = cv2.perspectiveTransform(pts2, H)
+    pts = np.concatenate((pts1, pts_2), axis=0)
+    [Xmin, Ymin] = np.int32(pts.min(axis=0).ravel())
+    [Xmax, Ymax] = np.int32(pts.max(axis=0).ravel())
+    t = [-Xmin, -Ymin]
+    Ht = np.array([[1, 0, t[0]], [0,1,t[1]], [0, 0, 1]])
+    result = cv2.warpPerspective(img2, Ht.dot(H), (Xmax-Xmin, Ymax-Ymin), flags=cv2.INTER_LINEAR)
+    result[t[1]:h1+t[1],t[0]:w1+t[0]] = img1
+    return result
 
-        for j in range(len(descriptors2)):
-            sq_diff = np.sum(np.square(descriptors1[i] - descriptors2[j]))
+def dot_product(h_mat, keypoint):
+    keypoint = np.expand_dims(keypoint, 1)
+    keypoint = np.vstack([keypoint, 1])
+    product = np.dot(h_mat, keypoint)
+    if product[2] !=0:
+        product = product/product[2]
+    
+    return product[0:2,:]
 
-            if sq_diff < min_sq_diff:
-                second_best_match = best_match
-                best_match = j
-                min_sq_diff = sq_diff
+def homography(point1, point2):
+    h_matrix = cv2.getPerspectiveTransform(np.float32(point1), np.float32(point2))
+    return h_matrix
 
-        if min_sq_diff < 0.75:  # Ratio test
-            ratio = min_sq_diff / np.sum(np.square(descriptors1[i] - descriptors2[second_best_match]))
-            if ratio < 0.75:  # Keep matched pair based on ratio
-                matches.append((i, best_match))
+def ransac(matched_pairs, threshold):
+    inliers = []
+    COUNT = []
+    for i in range(1000):
+        keypoints1 = [x[0] for x in matched_pairs]
+        keypoints2 = [x[1] for x in matched_pairs]
+        length = len(keypoints1)
 
-    return matches
+        randomlist = random.sample(range(0, length), 4)
+        points_1 = [keypoints1[idx] for idx in randomlist]
+        points_2 = [keypoints2[idx] for idx in randomlist]
+
+        h_matrix = homography(points_1, points_2)
+        points = []
+        count_inliers = 0
+        for i in range(length):
+            a = (np.array(keypoints2[i]))
+            ssd = np.linalg.norm(np.expand_dims(np.array(keypoints2[i]), 1) - dot_product(h_matrix, keypoints1[i]))
+            if ssd < threshold:
+                count_inliers += 1
+                points.append((keypoints1[i], keypoints2[i]))
+        COUNT.append(-count_inliers)
+        inliers.append((h_matrix, points))
+    max_count_idx = np.argsort(COUNT)
+    max_count_idx = max_count_idx[0]
+    final_matched_pairs = inliers[max_count_idx][1]
+
+    pts_1 = [x[0] for x in final_matched_pairs]
+    pts_2 = [x[1] for x in final_matched_pairs]
+    h_final_matrix, status = cv2.findHomography(np.float32(pts_1), np.float32(pts_2))
+    return h_final_matrix, final_matched_pairs
+           
+    
+def feature_matching(imgs, gray_imgs, img_desc, best_corners, match_ratio):
+    f1 = img_desc[0]
+    f2 = img_desc[1]
+    corners1 = best_corners[0]
+    corners2 = best_corners[1]
+    matched_pairs = []
+    for i in range(0, len(f1)):
+        sqr_diff = []
+        for j in range(0, len(f2)):
+            diff = np.sum((f1[i] - f2[j])**2)
+            sqr_diff.append(diff)
+        sqr_diff = np.array(sqr_diff)
+        diff_sort = np.argsort(sqr_diff)
+        sqr_diff_sort = sqr_diff[diff_sort]
+        ratio = sqr_diff_sort[0]/(sqr_diff_sort[1])
+        if ratio < match_ratio:
+            matched_pairs.append((corners1[i,1:3], corners2[diff_sort[0], 1:3]))
+
+    return matched_pairs
 
 def feature_descriptors(img, img_g, Nbest_corners, patch_size):
     descriptors = []
@@ -61,11 +147,11 @@ def ANMS(img, img_h, n_best, coords):
         for j in range(num):
             x_i = coords[i][1]              #We take x_cordinate of one corner point
             y_i = coords[i][0]              #We take x_cordinate of one corner point
-            neighbors_x = coords[j][1]      #x_cordinate of other points
-            neighbors_y = coords[j][0]
+            neighbours_x = coords[j][1]      #x_cordinate of other points
+            neighbours_y = coords[j][0]
 
-            if img_h[y_i, x_i] > img_h[neighbors_y, neighbors_x]:
-                ED = (neighbors_x - x_i)**2 + (neighbors_y - y_i)**2
+            if img_h[y_i, x_i] > img_h[neighbours_y, neighbours_x]:
+                ED = (neighbours_x - x_i)**2 + (neighbours_y - y_i)**2
 
             if ED < r[i, 0]:
                 r[i, 0] = ED
@@ -73,8 +159,8 @@ def ANMS(img, img_h, n_best, coords):
                 r[i, 2] = y_i
     arr = r[:,0]
     feature_sorting = np.argsort(-arr)      #We get the index of biggest that is the resaon of -ve sign (Descending order index)
-    feature_coord = r[feature_sorting]
-    Nbest_corners = feature_coord[:n_best,:] #We also can find min of (n_best, num_of_feature_cordinates we got)
+    feature_cord = r[feature_sorting]
+    Nbest_corners = feature_cord[:n_best,:] #We also can find min of (n_best, num_of_feature_cordinates we got)
     for i in range(len(Nbest_corners)):
         cv2.circle(img, (int(Nbest_corners[i][1]), int(Nbest_corners[i][2])), 3, 255, -1)
     plt.imshow(img)
@@ -82,7 +168,7 @@ def ANMS(img, img_h, n_best, coords):
     return Nbest_corners
 
 
-def corners(img, img_g, choice):
+def img_corners(img, img_g, choice):
     '''
     Corner Detector to find corners of an image, Choice 1 = Shi-Tomasi Choice 2 = Harris
     '''
@@ -124,82 +210,6 @@ def corners(img, img_g, choice):
 
     return coords, dst
     
-
-def generate_keypoints(corners):
-    # corners_img = corners(img, choice, Nbest, max_pts)
-
-    keypoints = [cv2.KeyPoint(x=float(kp[0][0]), y=float(kp[0][1]), size=20) for kp in corners]
-    return keypoints
-
-# def corners(img, choice, Nbest):
-#     '''
-#     Corner Detector to find corners of an image, Choice 1 = Shi-Tomasi Choice 2 = Harris
-#     '''
-
-#     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-#     if (choice == 1):
-#         '''
-#         Shi-Tomasi corner detection
-#         '''
-#         corners_img = cv2.goodFeaturesToTrack(gray_img, 1000, 0.05, 10)
-#         corners_img = np.int0(corners_img)
-        
-#         for corners in corners_img:
-#             x, y = corners.ravel()
-#             cv2.circle(img, (x, y), 3, [0,255,0], -1)
-
-
-#     elif (choice == 2):
-#         '''
-#         Harris corner detection
-#         '''
-#         gray_img = np.float32(gray_img)
-
-#         corners_img = cv2.cornerHarris(gray_img, 3, 3, 0.04)
-
-#         img[corners_img>0.001*corners_img.max()] = [0, 255, 0]
-
-#     else:
-#         print("Wrong choice entered for corner detection method")
-#         return img
-
-#     Cimg = cv2.cornerMinEigenVal(gray_img, blockSize=3, ksize=3)
-#     Cimg_norm = cv2.normalize(Cimg, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-#     _, thresh = cv2.threshold(Cimg_norm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-#     local_maxima = np.zeros_like(Cimg_norm, np.uint8)
-#     local_maxima[thresh == 255] = 255
-#     coordinates = np.column_stack(np.where(local_maxima != 0))
-#     # local_maxima = cv2.dilate((Cimg == cv2.dilate(Cimg, None)), None)
-#     # coordinates = np.argwhere(local_maxima > 0)
-
-#     Nstrong = len(coordinates)
-#     r = np.full(Nstrong, np.inf)
-
-#     for i in range(Nstrong):
-#         for j in range(Nstrong):
-#             if Cimg[coordinates[j][0], coordinates[j][1]] > Cimg[coordinates[i][0], coordinates[i][1]]:
-#                 ED = (coordinates[j][1] - coordinates[i][1])**2 + (coordinates[j][0] - coordinates[i][0])**2
-#                 if ED < r[i]:
-#                     r[i] = ED
-
-#     sorted_indices = np.argsort(r)[::-1][:Nbest]
-#     selected_coordinates = coordinates[sorted_indices]
-
-#     for coord in selected_coordinates:
-#         x, y = coord[1], coord[0]
-#         cv2.circle(img, (x, y), 3, [255, 0, 0], -1)
-    
-    
-#     return img
-
-
-def visualize_matches(img1, keypoints1, img2, keypoints2, matches):
-    img_matches = cv2.drawMatches(img1, keypoints1, img2, keypoints2, matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    cv2.imshow('Matches', img_matches)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
 def show(img):
     '''
     Display image
