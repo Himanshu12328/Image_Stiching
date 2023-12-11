@@ -1,56 +1,56 @@
 import cv2
-import numpy as np
-
-def image_corners(img):
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_gray = np.float32(img_gray)
-    image_corners = cv2.cornerHarris(img_gray, blockSize=2, ksize=3, k=0.04)
-    #tunning the threshold depending on image
-    threshold = 0.01 * image_corners.max()
-
-    image_corner_mask = np.zeros_like(image_corners)
-    image_corner_mask[image_corners > threshold] = 255
-
-    image_corner_mask = np.uint8(image_corner_mask)
-
-    contours, _ = cv2.findContours(image_corner_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    cv2.drawContours(img, contours, -1, (0, 0, 255), 2)
-
-    # img_with_corners = cv2.cvtColor(image_corner_mask, cv2.COLOR_GRAY2BGR)
-    # img_with_corners[image_corner_mask != 0] = [0, 0, 255]
-
-    return img
-
-
-def image_resizing(img):
-    '''
-    Resize 1/5 of the original image
-    '''
-    original_height, original_width = img.shape[:2]
-    new_width = original_width // 5
-    new_height = original_height // 5
-    resized_img = cv2.resize(img, (new_width, new_height))
-    return resized_img
-
-def show_image(img):
-    '''
-    Show the image
-    '''
-    cv2.imshow('image', img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
+import copy
+from utils import ANMS, img_corners, feature_descriptors, feature_matching, ransac, wraptwoimages, draw_matches
+import matplotlib.pyplot as plt
 
 def __main__():
-    img = cv2.imread('dataset/1.jpg')
 
-    resized_img = image_resizing(img)
+    images = []
+    gray_images = []
 
-    image_corner_mask = image_corners(resized_img)
-    
-    # show_image(resized_img)
-    show_image(image_corner_mask)
+    for i in range (1, 6):
+        images.append(cv2.imread(f'data/{i}.jpg'))
+        gray_images.append(cv2.cvtColor(images[i-1], cv2.COLOR_BGR2GRAY))
+
+    img_count = len(images)
+    corners = 1000
+    match_ratio = 0.4
+    threshold = 30
+    c1 = 0
+    c2 = 0
+    c3 = 0
+    for j in range(img_count-1):
+        img_desc = []
+        best_corners = []
+        c2 = j+1
+        imgs = [images[c1], images[c2]]
+        print("Matching image", c1+1, "and", c2+1)
+        gray_imgs = [gray_images[c1], gray_images[c2]]
+        for i in range(2):
+            img = imgs[i]
+            img_g = gray_imgs[i]
+            coords, img_h = img_corners(copy.deepcopy(img), img_g, 2)
+            Nbest_corners = ANMS(copy.deepcopy(img), img_h, corners, coords)
+            best_corners.append(Nbest_corners)
+            feature_vectors = feature_descriptors(copy.deepcopy(img), img_g, Nbest_corners, 40)
+            img_desc.append(feature_vectors)
+
+        matched_pairs = feature_matching(imgs, gray_imgs, img_desc, best_corners, match_ratio)
+        print("Matched pairs", len(matched_pairs))
+        # draw_matches(images, matched_pairs)
+        if len(matched_pairs) > 20:
+            c1 = c2
+            final_h_mat, final_matched = ransac(matched_pairs, threshold)
+            wraped = wraptwoimages(imgs, final_h_mat)
+            plt.imshow(wraped)
+            plt.show()
+        else:
+            c3 += 1
+            continue
+
+        images[c1] = wraped
+        gray_images[c1] = cv2.cvtColor(wraped, cv2.COLOR_BGR2GRAY)
+
 
 if __name__ == '__main__':
     __main__()
