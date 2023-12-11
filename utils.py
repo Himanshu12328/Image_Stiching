@@ -199,9 +199,9 @@ def img_corners(img, img_g, choice):
     diff = ((lm - ls) > 20000)
     msk[diff == 0] = 0
     img[img_h > 0.01*img_h.max()] = [255, 0, 0]
-    # plt.imshow(img)
-	# plt.savefig("harris.png")
-	# plt.show()
+    plt.imshow(img)
+	plt.savefig("harris.png")
+	plt.show()
     coords = []
     for i in range(msk.shape[0]):
         for j in range(msk.shape[1]):
